@@ -25,6 +25,7 @@ set_global_assignment -name SYSTEMVERILOG_FILE tof_ctrl.sv
 set_global_assignment -name SYSTEMVERILOG_FILE vl5310x_ctrl.sv
 set_global_assignment -name SYSTEMVERILOG_FILE i2c_master.sv
 set_global_assignment -name SYSTEMVERILOG_FILE i2c_driver.sv
+set_global_assignment -name SYSTEMVERILOG_FILE roverc_pro_ctrl.sv
 set_global_assignment -name SYSTEMVERILOG_FILE vl53l1x_ctrl.sv
 
 # ---- Compilation Settings ----
@@ -47,8 +48,8 @@ set_location_assignment PIN_25 -to RST_N
 
 # ---- I2C Interface (VL53L0X Sensor) ----
 # По твоей рекомендации: используем эти пины и включаем weak pull-up
-set_location_assignment PIN_106 -to I2C_SCL
-set_location_assignment PIN_105 -to I2C_SDA
+set_location_assignment PIN_77 -to I2C_SCL
+set_location_assignment PIN_76 -to I2C_SDA
 
 # ---- 7-Segment Display (Active Low, Common Anode) ----
 # SEG[0]=a ... SEG[6]=g, SEG[7]=dp
@@ -120,7 +121,7 @@ set_instance_assignment -name CURRENT_STRENGTH_NEW 8MA -to DIG[3]
 set_global_assignment -name RESERVE_ALL_UNUSED_PINS_WEAK_PULLUP "AS INPUT TRI-STATED"
 
 set_global_assignment -name EDA_SIMULATION_TOOL "Questa Altera FPGA (SystemVerilog)"
-set_instance_assignment -name PARTITION_HIERARCHY root_partition -to | -section_id Top
 set_global_assignment -name PARTITION_NETLIST_TYPE SOURCE -section_id Top
 set_global_assignment -name PARTITION_FITTER_PRESERVATION_LEVEL PLACEMENT_AND_ROUTING -section_id Top
 set_global_assignment -name PARTITION_COLOR 16764057 -section_id Top
+set_instance_assignment -name PARTITION_HIERARCHY root_partition -to | -section_id Top
