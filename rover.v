@@ -9,7 +9,7 @@
 //  LED1: PIN_87  LED2: PIN_86  LED3: PIN_85  LED4: PIN_84
 //  Светодиоды активны HIGH
 // ============================================================
-module led_blink (
+module rover (
     input  wire       clk,   // PIN_23 — 50 МГц кварц
     input  wire       key1,  // PIN_88 — кнопка KEY1 (сброс)
     output reg  [3:0] led    // PIN_87..84

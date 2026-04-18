@@ -1,0 +1,30 @@
+# ============================================================
+#  led_blink.qsf — пины для теста LED
+#  Плата: 助学FPGA开发板 (RZRD/RZ301 / OurFPGA.com)
+#  Верифицировано по схеме Development_board_schematic_V2_1
+# ============================================================
+
+set_global_assignment -name FAMILY "Cyclone IV E"
+set_global_assignment -name DEVICE EP4CE6E22C8
+set_global_assignment -name TOP_LEVEL_ENTITY rover
+set_global_assignment -name VERILOG_FILE rover.v
+
+# Тактовый сигнал 50 МГц
+set_location_assignment PIN_23 -to clk
+
+# Кнопка KEY1 (активный LOW)
+set_location_assignment PIN_88 -to key1
+
+# Светодиоды (активный HIGH)
+set_location_assignment PIN_87 -to led[0]
+set_location_assignment PIN_86 -to led[1]
+set_location_assignment PIN_85 -to led[2]
+set_location_assignment PIN_84 -to led[3]
+
+# Стандарт IO
+set_instance_assignment -name IO_STANDARD "3.3-V LVCMOS" -to clk
+set_instance_assignment -name IO_STANDARD "3.3-V LVCMOS" -to key1
+set_instance_assignment -name IO_STANDARD "3.3-V LVCMOS" -to led[0]
+set_instance_assignment -name IO_STANDARD "3.3-V LVCMOS" -to led[1]
+set_instance_assignment -name IO_STANDARD "3.3-V LVCMOS" -to led[2]
+set_instance_assignment -name IO_STANDARD "3.3-V LVCMOS" -to led[3]
