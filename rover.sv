@@ -14,15 +14,16 @@ module rover (
     output wire       LED4
 );
     parameter integer CLK_HZ                     = 50000000;
-    parameter integer I2C_HZ                     = 50000;   // ниже 100 кГц, но безопаснее, чем 25 кГц
+    parameter integer I2C_HZ                     = 50000;
     parameter integer TOF_SENSOR_KIND            = 2;       // 2 = VL53L1X
     parameter integer PWRUP_DELAY_MS             = 100;
     parameter integer INTER_OP_DELAY_MS          = 5;
-    parameter integer MOTOR_SPEED_CMD            = 8'd100;
+    parameter integer MOTOR_SPEED_CMD            = 8'd50;
     parameter integer SENSOR_REINIT_AFTER_ERRORS = 4;
     parameter integer MOTOR_WAIT_TIMEOUT_MS      = 40;
     parameter integer TOF_INIT_TIMEOUT_MS        = 300;
-    parameter integer TOF_SAMP_TIMEOUT_MS        = 80;
+    parameter integer TOF_SAMP_TIMEOUT_MS        = 150;
+    parameter integer TOF_FAR_DISTANCE_MM        = 4000;
 
     function integer clog2;
         input integer value;
@@ -86,14 +87,21 @@ module rover (
     wire [7:0] motor2_speed;
     wire [7:0] motor3_speed;
 
-    wire [7:0] motor_speed_cmd;
-
-    assign motor_speed_cmd = (display_value < 16'd100) ? 8'd0 : MOTOR_SPEED_CMD[7:0];
-
-    assign motor0_speed = motor_speed_cmd;
-    assign motor1_speed = motor_speed_cmd;
-    assign motor2_speed = motor_speed_cmd;
-    assign motor3_speed = motor_speed_cmd;
+    // Вынесенная логика движения. clk и rst_n заведены внутрь,
+    // но сам алгоритм движения оставлен таким же, как в последней рабочей версии.
+    distance_motion_ctrl #(
+        .DIST_STOP_MM(200),
+        .MOTOR_SPEED_CMD(MOTOR_SPEED_CMD)
+    ) u_distance_motion_ctrl (
+        .clk(CLK_50M),
+        .rst_n(RST_N),
+        .sensor_valid(sensor_valid_seen),
+        .distance_mm(display_value),
+        .motor0_speed(motor0_speed),
+        .motor1_speed(motor1_speed),
+        .motor2_speed(motor2_speed),
+        .motor3_speed(motor3_speed)
+    );
 
     // I2C physical lines
     wire scl_drive_low;
@@ -101,7 +109,7 @@ module rover (
     assign I2C_SCL = scl_drive_low ? 1'b0 : 1'bz;
     assign I2C_SDA = sda_drive_low ? 1'b0 : 1'bz;
 
-    // Shared I2C master: берём штатный master, только с меньшей частотой.
+    // Shared I2C master
     wire        txn_core_start;
     wire        txn_core_is_read;
     wire [6:0]  txn_core_dev_addr;
@@ -304,7 +312,7 @@ module rover (
             tof_sample_start <= 1'b0;
             motor_start      <= 1'b0;
 
-            if (tof_distance_valid) begin
+            if (tof_distance_valid && (tof_distance_mm != 16'd0)) begin
                 display_value             <= tof_distance_mm;
                 sensor_valid_seen         <= 1'b1;
                 sensor_error_latched      <= 1'b0;
@@ -367,6 +375,7 @@ module rover (
                         if (tof_error || tof_nack) begin
                             sensor_error_latched      <= 1'b1;
                             sensor_init_done          <= 1'b0;
+                            sensor_valid_seen         <= 1'b0;
                             sensor_sample_error_count <= 8'd0;
                         end else begin
                             sensor_error_latched      <= 1'b0;
@@ -379,6 +388,7 @@ module rover (
                     end else if (tof_init_wait_cnt >= TOF_INIT_TIMEOUT_CLKS - 1) begin
                         sensor_error_latched      <= 1'b1;
                         sensor_init_done          <= 1'b0;
+                        sensor_valid_seen         <= 1'b0;
                         sensor_sample_error_count <= 8'd0;
                         pause_cnt                 <= {PAUSE_CNT_W{1'b0}};
                         state_after_pause         <= S_MOTOR_START;
@@ -400,14 +410,24 @@ module rover (
                     if (tof_done) begin
                         if (tof_error || tof_nack) begin
                             sensor_error_latched <= 1'b1;
+                            sensor_valid_seen    <= 1'b0;
                             if (sensor_sample_error_count >= SENSOR_REINIT_AFTER_ERRORS - 1) begin
                                 sensor_sample_error_count <= 8'd0;
                                 sensor_init_done          <= 1'b0;
                             end else begin
                                 sensor_sample_error_count <= sensor_sample_error_count + 8'd1;
                             end
-                        end else begin
+                        end else if (tof_distance_valid && (tof_distance_mm != 16'd0)) begin
                             sensor_error_latched      <= 1'b0;
+                            sensor_valid_seen         <= 1'b1;
+                            sensor_sample_error_count <= 8'd0;
+                        end else begin
+                            // Успешный цикл измерения без пригодной дальности:
+                            // объект слишком далеко, сцена пустая или датчик вернул
+                            // "out of range". Это не считаем ошибкой датчика.
+                            display_value             <= TOF_FAR_DISTANCE_MM[15:0];
+                            sensor_error_latched      <= 1'b0;
+                            sensor_valid_seen         <= 1'b1;
                             sensor_sample_error_count <= 8'd0;
                         end
                         pause_cnt         <= {PAUSE_CNT_W{1'b0}};
@@ -415,6 +435,7 @@ module rover (
                         state             <= S_INTER_OP_WAIT;
                     end else if (tof_samp_wait_cnt >= TOF_SAMP_TIMEOUT_CLKS - 1) begin
                         sensor_error_latched <= 1'b1;
+                        sensor_valid_seen    <= 1'b0;
                         if (sensor_sample_error_count >= SENSOR_REINIT_AFTER_ERRORS - 1) begin
                             sensor_sample_error_count <= 8'd0;
                             sensor_init_done          <= 1'b0;
