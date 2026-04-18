@@ -1,7 +1,8 @@
 # ============================================================
-#  led_blink.qsf — пины для теста LED
-#  Плата: 助学FPGA开发板 (RZRD/RZ301 / OurFPGA.com)
-#  Верифицировано по схеме Development_board_schematic_V2_1
+#  top_7seg.qsf — Пины для 7-сегментного счётчика
+#  Плата: 助学FPGA开发板 (RZRD / OurFPGA.com)
+#  Схема: Development_board_schematic_diagram_V2_1.pdf
+#  ✅ Все пины верифицированы по схеме платы
 # ============================================================
 
 set_global_assignment -name FAMILY "Cyclone IV E"
@@ -9,22 +10,57 @@ set_global_assignment -name DEVICE EP4CE6E22C8
 set_global_assignment -name TOP_LEVEL_ENTITY rover
 set_global_assignment -name VERILOG_FILE rover.v
 
-# Тактовый сигнал 50 МГц
+# --- Тактовый сигнал 50 МГц ---
 set_location_assignment PIN_23 -to clk
 
-# Кнопка KEY1 (активный LOW)
+# --- KEY1 кнопка (активный LOW) ---
 set_location_assignment PIN_88 -to key1
 
-# Светодиоды (активный HIGH)
-set_location_assignment PIN_87 -to led[0]
-set_location_assignment PIN_86 -to led[1]
-set_location_assignment PIN_85 -to led[2]
-set_location_assignment PIN_84 -to led[3]
+# -------------------------------------------------------
+# 7-сегментный дисплей
+# Разряды DIG (выбор цифры, активный HIGH):
+#   DIG[0] = единицы  → DIG1 платы
+#   DIG[1] = десятки  → DIG2 платы
+#   DIG[2] = сотни    → DIG3 платы
+#   DIG[3] = тысячи   → DIG4 платы
+# -------------------------------------------------------
+set_location_assignment PIN_133 -to DIG[0]
+set_location_assignment PIN_135 -to DIG[1]
+set_location_assignment PIN_136 -to DIG[2]
+set_location_assignment PIN_137 -to DIG[3]
 
-# Стандарт IO
+# -------------------------------------------------------
+# Сегменты SEG (активный HIGH для общего катода):
+#   SEG[0] = a  → SEG1 платы
+#   SEG[1] = b  → SEG2 платы
+#   SEG[2] = c  → SEG3 платы
+#   SEG[3] = d  → SEG4 платы
+#   SEG[4] = e  → SEG5 платы
+#   SEG[5] = f  → SEG6 платы
+#   SEG[6] = g  → SEG7 платы
+#   SEG[7] = DP → SEG0 платы
+# -------------------------------------------------------
+set_location_assignment PIN_121 -to SEG[0]
+set_location_assignment PIN_125 -to SEG[1]
+set_location_assignment PIN_129 -to SEG[2]
+set_location_assignment PIN_132 -to SEG[3]
+set_location_assignment PIN_126 -to SEG[4]
+set_location_assignment PIN_124 -to SEG[5]
+set_location_assignment PIN_127 -to SEG[6]
+set_location_assignment PIN_128 -to SEG[7]
+
+# --- Стандарт IO ---
 set_instance_assignment -name IO_STANDARD "3.3-V LVCMOS" -to clk
 set_instance_assignment -name IO_STANDARD "3.3-V LVCMOS" -to key1
-set_instance_assignment -name IO_STANDARD "3.3-V LVCMOS" -to led[0]
-set_instance_assignment -name IO_STANDARD "3.3-V LVCMOS" -to led[1]
-set_instance_assignment -name IO_STANDARD "3.3-V LVCMOS" -to led[2]
-set_instance_assignment -name IO_STANDARD "3.3-V LVCMOS" -to led[3]
+set_instance_assignment -name IO_STANDARD "3.3-V LVCMOS" -to DIG[0]
+set_instance_assignment -name IO_STANDARD "3.3-V LVCMOS" -to DIG[1]
+set_instance_assignment -name IO_STANDARD "3.3-V LVCMOS" -to DIG[2]
+set_instance_assignment -name IO_STANDARD "3.3-V LVCMOS" -to DIG[3]
+set_instance_assignment -name IO_STANDARD "3.3-V LVCMOS" -to SEG[0]
+set_instance_assignment -name IO_STANDARD "3.3-V LVCMOS" -to SEG[1]
+set_instance_assignment -name IO_STANDARD "3.3-V LVCMOS" -to SEG[2]
+set_instance_assignment -name IO_STANDARD "3.3-V LVCMOS" -to SEG[3]
+set_instance_assignment -name IO_STANDARD "3.3-V LVCMOS" -to SEG[4]
+set_instance_assignment -name IO_STANDARD "3.3-V LVCMOS" -to SEG[5]
+set_instance_assignment -name IO_STANDARD "3.3-V LVCMOS" -to SEG[6]
+set_instance_assignment -name IO_STANDARD "3.3-V LVCMOS" -to SEG[7]
