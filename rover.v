@@ -1,146 +1,218 @@
+`timescale 1ns / 1ps
+`default_nettype none
 
-// ============================================================
-//  top_7seg.v — Шаг 2: Счётчик 0–9999 на встроенном
-//               4-разрядном 7-сегментном индикаторе
-//
-//  Плата: 助学FPGA开发板 (RZRD / OurFPGA.com)
-//  Чип:   EP4CE6E22C8N
-//
-//  Пины 7-сегментного индикатора (мультиплексный):
-//    DIG1: PIN_133   DIG2: PIN_135
-//    DIG3: PIN_136   DIG4: PIN_137
-//    SEG1(a): PIN_121   SEG2(b): PIN_125
-//    SEG3(c): PIN_129   SEG4(d): PIN_132
-//    SEG5(e): PIN_126   SEG6(f): PIN_124
-//    SEG7(g): PIN_127   SEG0(dp): PIN_128
-//
-//  Тип дисплея: ОБЩИЙ КАТОД, сегменты активны HIGH,
-//               разряды активны HIGH.
-//  Если твой дисплей ОБЩИЙ АНОД — инвертируй SEG и DIG!
-// ============================================================
 module rover (
-    input  wire       clk,     // PIN_23 — 50 МГц
-    input  wire       key1,    // PIN_88 — KEY1, сброс (акт. LOW)
-    // Разряды: DIG[0]=единицы...DIG[3]=тысячи (акт. HIGH)
-    output reg  [3:0] DIG,
-    // Сегменты: {DP,g,f,e,d,c,b,a} (акт. HIGH)
-    output reg  [7:0] SEG
+    input  wire       CLK_50M,
+    input  wire       RST_N,
+    inout  wire       I2C_SCL,
+    inout  wire       I2C_SDA,
+    output wire [7:0] SEG,
+    output wire [3:0] DIG,
+    output wire       LED1,
+    output wire       LED2,
+    output wire       LED3,
+    output wire       LED4
 );
+    parameter CLK_HZ           = 50000000;
+    parameter I2C_HZ           = 100000;
+    parameter TOF_SENSOR_KIND  = 1;   // 1 = VL53L0X
+    parameter INIT_DELAY_MS    = 10;
+    parameter SAMPLE_PERIOD_MS = 100;
 
-// ----------------------------------------------------------
-// 1. Делитель → 1 Гц (счёт цифр)
-// ----------------------------------------------------------
-reg [25:0] cnt_1hz;
-reg        tick_1hz;
+    parameter INIT_DELAY_CLKS    = (CLK_HZ / 1000) * INIT_DELAY_MS;
+    parameter SAMPLE_PERIOD_CLKS = (CLK_HZ / 1000) * SAMPLE_PERIOD_MS;
 
-always @(posedge clk) begin
-    if (!key1) begin
-        cnt_1hz  <= 0;
-        tick_1hz <= 0;
-    end else if (cnt_1hz == 49_999_999) begin
-        cnt_1hz  <= 0;
-        tick_1hz <= 1;
-    end else begin
-        cnt_1hz  <= cnt_1hz + 1;
-        tick_1hz <= 0;
+    // ceil(log2()) for counters
+    function integer clog2;
+        input integer value;
+        integer i;
+        begin
+            value = value - 1;
+            for (i = 0; value > 0; i = i + 1)
+                value = value >> 1;
+            clog2 = i;
+        end
+    endfunction
+
+    localparam INIT_CNT_W   = (INIT_DELAY_CLKS <= 1)    ? 1 : clog2(INIT_DELAY_CLKS);
+    localparam SAMPLE_CNT_W = (SAMPLE_PERIOD_CLKS <= 1) ? 1 : clog2(SAMPLE_PERIOD_CLKS);
+
+    wire scl_drive_low;
+    wire sda_drive_low;
+
+    reg         tof_init_start;
+    reg         tof_sample_start;
+    wire [15:0] tof_distance_mm;
+    wire        tof_distance_valid;
+    wire        tof_busy;
+    wire        tof_done;
+    wire        tof_error;
+    wire        tof_nack;
+
+    wire        tof_txn_req_valid;
+    wire        tof_txn_req_ready;
+    wire        tof_txn_req_is_read;
+    wire [6:0]  tof_txn_req_dev_addr;
+    wire [15:0] tof_txn_req_reg_addr;
+    wire        tof_txn_req_reg_addr_16b;
+    wire [7:0]  tof_txn_req_wr_data;
+    wire [1:0]  tof_txn_req_rd_len;
+
+    wire        txn_core_start;
+    wire        txn_core_is_read;
+    wire [6:0]  txn_core_dev_addr;
+    wire [15:0] txn_core_reg_addr;
+    wire        txn_core_reg_addr_16b;
+    wire [7:0]  txn_core_wr_data;
+    wire [1:0]  txn_core_rd_len;
+    wire [15:0] txn_core_rd_data;
+    wire        txn_core_busy;
+    wire        txn_core_done;
+    wire        txn_core_error;
+    wire        txn_core_nack;
+
+    reg [15:0] display_value;
+    reg [INIT_CNT_W-1:0] init_cnt;
+    reg [SAMPLE_CNT_W-1:0] sample_cnt;
+    reg init_armed;
+    reg init_done;
+    reg [24:0] heartbeat_cnt;
+    reg [22:0] valid_stretch;
+
+    wire heartbeat;
+
+    assign I2C_SCL = scl_drive_low ? 1'b0 : 1'bz;
+    assign I2C_SDA = sda_drive_low ? 1'b0 : 1'bz;
+
+    assign tof_txn_req_ready      = ~txn_core_busy;
+    assign txn_core_start         = tof_txn_req_valid & tof_txn_req_ready;
+    assign txn_core_is_read       = tof_txn_req_is_read;
+    assign txn_core_dev_addr      = tof_txn_req_dev_addr;
+    assign txn_core_reg_addr      = tof_txn_req_reg_addr;
+    assign txn_core_reg_addr_16b  = tof_txn_req_reg_addr_16b;
+    assign txn_core_wr_data       = tof_txn_req_wr_data;
+    assign txn_core_rd_len        = tof_txn_req_rd_len;
+
+    i2c_master #(
+        .CLK_HZ(CLK_HZ),
+        .I2C_HZ(I2C_HZ)
+    ) u_i2c_master (
+        .clk(CLK_50M),
+        .rst_n(RST_N),
+        .start(txn_core_start),
+        .is_read(txn_core_is_read),
+        .dev_addr(txn_core_dev_addr),
+        .reg_addr(txn_core_reg_addr),
+        .reg_addr_16b(txn_core_reg_addr_16b),
+        .wr_data(txn_core_wr_data),
+        .rd_len(txn_core_rd_len),
+        .rd_data(txn_core_rd_data),
+        .busy(txn_core_busy),
+        .done(txn_core_done),
+        .error(txn_core_error),
+        .nack(txn_core_nack),
+        .scl_drive_low(scl_drive_low),
+        .sda_drive_low(sda_drive_low),
+        .scl_in(I2C_SCL),
+        .sda_in(I2C_SDA)
+    );
+
+    tof_ctrl #(
+        .SENSOR_KIND(TOF_SENSOR_KIND),
+        .CLK_HZ(CLK_HZ)
+    ) u_tof_ctrl (
+        .clk(CLK_50M),
+        .rst_n(RST_N),
+        .init_start(tof_init_start),
+        .sample_start(tof_sample_start),
+        .distance_mm(tof_distance_mm),
+        .distance_valid(tof_distance_valid),
+        .busy(tof_busy),
+        .done(tof_done),
+        .error(tof_error),
+        .nack(tof_nack),
+        .txn_req_valid(tof_txn_req_valid),
+        .txn_req_ready(tof_txn_req_ready),
+        .txn_req_is_read(tof_txn_req_is_read),
+        .txn_req_dev_addr(tof_txn_req_dev_addr),
+        .txn_req_reg_addr(tof_txn_req_reg_addr),
+        .txn_req_reg_addr_16b(tof_txn_req_reg_addr_16b),
+        .txn_req_wr_data(tof_txn_req_wr_data),
+        .txn_req_rd_len(tof_txn_req_rd_len),
+        .txn_rsp_done(txn_core_done),
+        .txn_rsp_error(txn_core_error),
+        .txn_rsp_nack(txn_core_nack),
+        .txn_rsp_rd_data(txn_core_rd_data)
+    );
+
+    seg7_display u_seg7_display (
+        .clk(CLK_50M),
+        .rst_n(RST_N),
+        .value(display_value),
+        .show_err(tof_error | tof_nack),
+        .seg(SEG),
+        .dig(DIG)
+    );
+
+    always @(posedge CLK_50M or negedge RST_N) begin
+        if (!RST_N) begin
+            init_cnt         <= {INIT_CNT_W{1'b0}};
+            sample_cnt       <= {SAMPLE_CNT_W{1'b0}};
+            init_armed       <= 1'b1;
+            init_done        <= 1'b0;
+            tof_init_start   <= 1'b0;
+            tof_sample_start <= 1'b0;
+            display_value    <= 16'd0;
+            heartbeat_cnt    <= 25'd0;
+            valid_stretch    <= 23'd0;
+        end else begin
+            tof_init_start   <= 1'b0;
+            tof_sample_start <= 1'b0;
+
+            heartbeat_cnt <= heartbeat_cnt + 25'd1;
+
+            if (tof_distance_valid) begin
+                display_value <= tof_distance_mm;
+                valid_stretch <= {23{1'b1}};
+            end else if (valid_stretch != 23'd0) begin
+                valid_stretch <= valid_stretch - 23'd1;
+            end
+
+            if (init_armed) begin
+                if (init_cnt == INIT_DELAY_CLKS - 1) begin
+                    if (!tof_busy) begin
+                        tof_init_start <= 1'b1;
+                        init_armed     <= 1'b0;
+                        init_cnt       <= {INIT_CNT_W{1'b0}};
+                    end
+                end else begin
+                    init_cnt <= init_cnt + {{(INIT_CNT_W-1){1'b0}},1'b1};
+                end
+            end
+
+            if (tof_done && !tof_error && !tof_nack && !init_done)
+                init_done <= 1'b1;
+
+            if (init_done && !tof_busy) begin
+                if (sample_cnt == SAMPLE_PERIOD_CLKS - 1) begin
+                    tof_sample_start <= 1'b1;
+                    sample_cnt       <= {SAMPLE_CNT_W{1'b0}};
+                end else begin
+                    sample_cnt <= sample_cnt + {{(SAMPLE_CNT_W-1){1'b0}},1'b1};
+                end
+            end else begin
+                sample_cnt <= {SAMPLE_CNT_W{1'b0}};
+            end
+        end
     end
-end
 
-// ----------------------------------------------------------
-// 2. BCD-счётчик 0000 – 9999
-// ----------------------------------------------------------
-reg [3:0] d0, d1, d2, d3;
+    assign heartbeat = heartbeat_cnt[24];
 
-always @(posedge clk) begin
-    if (!key1) begin
-        d0 <= 0; d1 <= 0; d2 <= 0; d3 <= 0;
-    end else if (tick_1hz) begin
-        if (d0 == 9) begin
-            d0 <= 0;
-            if (d1 == 9) begin
-                d1 <= 0;
-                if (d2 == 9) begin
-                    d2 <= 0;
-                    d3 <= (d3 == 9) ? 4'd0 : d3 + 1;
-                end else d2 <= d2 + 1;
-            end else d1 <= d1 + 1;
-        end else d0 <= d0 + 1;
-    end
-end
-
-// ----------------------------------------------------------
-// 3. Делитель → ~1 кГц для мультиплексирования
-//    Каждый разряд обновляется 250 раз/сек → нет мерцания
-// ----------------------------------------------------------
-reg [15:0] cnt_mux;
-reg        tick_mux;
-
-always @(posedge clk) begin
-    if (!key1) begin
-        cnt_mux  <= 0;
-        tick_mux <= 0;
-    end else if (cnt_mux == 49_999) begin
-        cnt_mux  <= 0;
-        tick_mux <= 1;
-    end else begin
-        cnt_mux  <= cnt_mux + 1;
-        tick_mux <= 0;
-    end
-end
-
-// ----------------------------------------------------------
-// 4. Мультиплексор разрядов
-// ----------------------------------------------------------
-reg [1:0] dig_sel;
-
-always @(posedge clk) begin
-    if (!key1)      dig_sel <= 0;
-    else if (tick_mux) dig_sel <= dig_sel + 1;
-end
-
-// Выбор текущей BCD-цифры
-reg [3:0] bcd_cur;
-always @(*) begin
-    case (dig_sel)
-        2'd0: bcd_cur = d0;   // единицы
-        2'd1: bcd_cur = d1;   // десятки
-        2'd2: bcd_cur = d2;   // сотни
-        2'd3: bcd_cur = d3;   // тысячи
-        default: bcd_cur = 0;
-    endcase
-end
-
-// Активация разряда (активный HIGH)
-always @(*) begin
-    case (dig_sel)
-        2'd0: DIG = 4'b1110;   // единицы
-        2'd1: DIG = 4'b1101;   // десятки
-        2'd2: DIG = 4'b1011;   // сотни
-        2'd3: DIG = 4'b0111;   // тысячи
-        default: DIG = 4'b0000;
-    endcase
-end
-
-// ----------------------------------------------------------
-// 5. Декодер BCD → сегменты
-//    SEG = {DP, g, f, e, d, c, b, a}
-//    Активный HIGH (общий катод)
-// ----------------------------------------------------------
-always @(*) begin
-    case (bcd_cur)
-        //               DPgfedcba
-        4'd0: SEG = 8'b0_1100000; // 0
-        4'd1: SEG = 8'b1_1111100; // 1
-        4'd2: SEG = 8'b0_1010010; // 2
-        4'd3: SEG = 8'b0_1011000; // 3
-        4'd4: SEG = 8'b1_1001100; // 4
-        4'd5: SEG = 8'b0_1001001; // 5
-        4'd6: SEG = 8'b0_1000001; // 6
-        4'd7: SEG = 8'b0_1111100; // 7
-        4'd8: SEG = 8'b0_1000000; // 8
-        4'd9: SEG = 8'b0_1001000; // 9
-        default: SEG = 8'b1111110_1;
-    endcase
-end
+    assign LED1 = ~heartbeat;
+    assign LED2 = ~(valid_stretch != 23'd0);
+    assign LED3 = ~(tof_error | tof_nack);
+    assign LED4 = 1'b1;
 
 endmodule
+
+`default_nettype wire

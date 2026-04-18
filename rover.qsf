@@ -1,66 +1,126 @@
-# ============================================================
-#  top_7seg.qsf — Пины для 7-сегментного счётчика
-#  Плата: 助学FPGA开发板 (RZRD / OurFPGA.com)
-#  Схема: Development_board_schematic_diagram_V2_1.pdf
-#  ✅ Все пины верифицированы по схеме платы
-# ============================================================
+# =============================================================================
+# Quartus Prime Project Settings File (.qsf)
+# VL53L0X Distance Sensor -> 7-Segment Display
+# FPGA: EP4CE6E22C8 (OurFPGA Development Board V2.1)
+# =============================================================================
 
+# ---- Project Settings ----
 set_global_assignment -name FAMILY "Cyclone IV E"
 set_global_assignment -name DEVICE EP4CE6E22C8
 set_global_assignment -name TOP_LEVEL_ENTITY rover
+set_global_assignment -name ORIGINAL_QUARTUS_VERSION 18.1
+set_global_assignment -name PROJECT_CREATION_TIME_DATE "2026-04-18"
+set_global_assignment -name LAST_QUARTUS_VERSION 25.1std.0
+set_global_assignment -name MIN_CORE_JUNCTION_TEMP 0
+set_global_assignment -name MAX_CORE_JUNCTION_TEMP 85
+set_global_assignment -name ERROR_CHECK_FREQUENCY_DIVISOR 1
+set_global_assignment -name NUM_PARALLEL_PROCESSORS 4
+set_global_assignment -name VERILOG_INPUT_VERSION SYSTEMVERILOG_2005
+
+# ---- Source Files ----
+# Новый набор файлов проекта
 set_global_assignment -name VERILOG_FILE rover.v
+set_global_assignment -name VERILOG_FILE seg7_display.v
+set_global_assignment -name SYSTEMVERILOG_FILE tof_ctrl.sv
+set_global_assignment -name SYSTEMVERILOG_FILE vl5310x_ctrl.sv
+set_global_assignment -name SYSTEMVERILOG_FILE i2c_master.sv
+set_global_assignment -name SYSTEMVERILOG_FILE i2c_driver.sv
+set_global_assignment -name SYSTEMVERILOG_FILE vl53l1x_ctrl.sv
 
-# --- Тактовый сигнал 50 МГц ---
-set_location_assignment PIN_23 -to clk
+# ---- Compilation Settings ----
+set_global_assignment -name STRATIX_DEVICE_IO_STANDARD "3.3-V LVTTL"
+set_global_assignment -name USE_CONFIGURATION_DEVICE OFF
+set_global_assignment -name CRC_ERROR_OPEN_DRAIN OFF
+set_global_assignment -name CYCLONEII_RESERVE_NCEO_AFTER_CONFIGURATION "USE AS REGULAR IO"
+set_global_assignment -name OUTPUT_IO_TIMING_NEAR_END_VMEAS "HALF VCCIO" -rise
+set_global_assignment -name OUTPUT_IO_TIMING_NEAR_END_VMEAS "HALF VCCIO" -fall
+set_global_assignment -name OUTPUT_IO_TIMING_FAR_END_VMEAS "HALF SIGNAL SWING" -rise
+set_global_assignment -name OUTPUT_IO_TIMING_FAR_END_VMEAS "HALF SIGNAL SWING" -fall
 
-# --- KEY1 кнопка (активный LOW) ---
-set_location_assignment PIN_88 -to key1
+# =============================================================================
+# PIN ASSIGNMENTS
+# =============================================================================
 
-# -------------------------------------------------------
-# 7-сегментный дисплей
-# Разряды DIG (выбор цифры, активный HIGH):
-#   DIG[0] = единицы  → DIG1 платы
-#   DIG[1] = десятки  → DIG2 платы
-#   DIG[2] = сотни    → DIG3 платы
-#   DIG[3] = тысячи   → DIG4 платы
-# -------------------------------------------------------
+# ---- Clock and Reset ----
+set_location_assignment PIN_23 -to CLK_50M
+set_location_assignment PIN_25 -to RST_N
+
+# ---- I2C Interface (VL53L0X Sensor) ----
+# По твоей рекомендации: используем эти пины и включаем weak pull-up
+set_location_assignment PIN_106 -to I2C_SCL
+set_location_assignment PIN_105 -to I2C_SDA
+
+# ---- 7-Segment Display (Active Low, Common Anode) ----
+# SEG[0]=a ... SEG[6]=g, SEG[7]=dp
+set_location_assignment PIN_128 -to SEG[0]
+set_location_assignment PIN_121 -to SEG[1]
+set_location_assignment PIN_125 -to SEG[2]
+set_location_assignment PIN_129 -to SEG[3]
+set_location_assignment PIN_132 -to SEG[4]
+set_location_assignment PIN_126 -to SEG[5]
+set_location_assignment PIN_124 -to SEG[6]
+set_location_assignment PIN_127 -to SEG[7]
+
+# Digit select
 set_location_assignment PIN_133 -to DIG[0]
 set_location_assignment PIN_135 -to DIG[1]
 set_location_assignment PIN_136 -to DIG[2]
 set_location_assignment PIN_137 -to DIG[3]
 
-# -------------------------------------------------------
-# Сегменты SEG (активный HIGH для общего катода):
-#   SEG[0] = a  → SEG1 платы
-#   SEG[1] = b  → SEG2 платы
-#   SEG[2] = c  → SEG3 платы
-#   SEG[3] = d  → SEG4 платы
-#   SEG[4] = e  → SEG5 платы
-#   SEG[5] = f  → SEG6 платы
-#   SEG[6] = g  → SEG7 платы
-#   SEG[7] = DP → SEG0 платы
-# -------------------------------------------------------
-set_location_assignment PIN_121 -to SEG[0]
-set_location_assignment PIN_125 -to SEG[1]
-set_location_assignment PIN_129 -to SEG[2]
-set_location_assignment PIN_132 -to SEG[3]
-set_location_assignment PIN_126 -to SEG[4]
-set_location_assignment PIN_124 -to SEG[5]
-set_location_assignment PIN_127 -to SEG[6]
-set_location_assignment PIN_128 -to SEG[7]
+# ---- Status LEDs (Active Low) ----
+set_location_assignment PIN_72 -to LED1
+set_location_assignment PIN_73 -to LED2
+set_location_assignment PIN_74 -to LED3
+set_location_assignment PIN_75 -to LED4
 
-# --- Стандарт IO ---
-set_instance_assignment -name IO_STANDARD "3.3-V LVCMOS" -to clk
-set_instance_assignment -name IO_STANDARD "3.3-V LVCMOS" -to key1
-set_instance_assignment -name IO_STANDARD "3.3-V LVCMOS" -to DIG[0]
-set_instance_assignment -name IO_STANDARD "3.3-V LVCMOS" -to DIG[1]
-set_instance_assignment -name IO_STANDARD "3.3-V LVCMOS" -to DIG[2]
-set_instance_assignment -name IO_STANDARD "3.3-V LVCMOS" -to DIG[3]
-set_instance_assignment -name IO_STANDARD "3.3-V LVCMOS" -to SEG[0]
-set_instance_assignment -name IO_STANDARD "3.3-V LVCMOS" -to SEG[1]
-set_instance_assignment -name IO_STANDARD "3.3-V LVCMOS" -to SEG[2]
-set_instance_assignment -name IO_STANDARD "3.3-V LVCMOS" -to SEG[3]
-set_instance_assignment -name IO_STANDARD "3.3-V LVCMOS" -to SEG[4]
-set_instance_assignment -name IO_STANDARD "3.3-V LVCMOS" -to SEG[5]
-set_instance_assignment -name IO_STANDARD "3.3-V LVCMOS" -to SEG[6]
-set_instance_assignment -name IO_STANDARD "3.3-V LVCMOS" -to SEG[7]
+# ---- I/O Standards ----
+set_instance_assignment -name IO_STANDARD "3.3-V LVTTL" -to CLK_50M
+set_instance_assignment -name IO_STANDARD "3.3-V LVTTL" -to RST_N
+
+set_instance_assignment -name IO_STANDARD "3.3-V LVCMOS" -to I2C_SCL
+set_instance_assignment -name IO_STANDARD "3.3-V LVCMOS" -to I2C_SDA
+set_instance_assignment -name WEAK_PULL_UP_RESISTOR ON -to I2C_SCL
+set_instance_assignment -name WEAK_PULL_UP_RESISTOR ON -to I2C_SDA
+
+set_instance_assignment -name IO_STANDARD "3.3-V LVTTL" -to SEG[0]
+set_instance_assignment -name IO_STANDARD "3.3-V LVTTL" -to SEG[1]
+set_instance_assignment -name IO_STANDARD "3.3-V LVTTL" -to SEG[2]
+set_instance_assignment -name IO_STANDARD "3.3-V LVTTL" -to SEG[3]
+set_instance_assignment -name IO_STANDARD "3.3-V LVTTL" -to SEG[4]
+set_instance_assignment -name IO_STANDARD "3.3-V LVTTL" -to SEG[5]
+set_instance_assignment -name IO_STANDARD "3.3-V LVTTL" -to SEG[6]
+set_instance_assignment -name IO_STANDARD "3.3-V LVTTL" -to SEG[7]
+
+set_instance_assignment -name IO_STANDARD "3.3-V LVTTL" -to DIG[0]
+set_instance_assignment -name IO_STANDARD "3.3-V LVTTL" -to DIG[1]
+set_instance_assignment -name IO_STANDARD "3.3-V LVTTL" -to DIG[2]
+set_instance_assignment -name IO_STANDARD "3.3-V LVTTL" -to DIG[3]
+
+set_instance_assignment -name IO_STANDARD "3.3-V LVTTL" -to LED1
+set_instance_assignment -name IO_STANDARD "3.3-V LVTTL" -to LED2
+set_instance_assignment -name IO_STANDARD "3.3-V LVTTL" -to LED3
+set_instance_assignment -name IO_STANDARD "3.3-V LVTTL" -to LED4
+
+# ---- Current Strength ----
+set_instance_assignment -name CURRENT_STRENGTH_NEW 8MA -to SEG[0]
+set_instance_assignment -name CURRENT_STRENGTH_NEW 8MA -to SEG[1]
+set_instance_assignment -name CURRENT_STRENGTH_NEW 8MA -to SEG[2]
+set_instance_assignment -name CURRENT_STRENGTH_NEW 8MA -to SEG[3]
+set_instance_assignment -name CURRENT_STRENGTH_NEW 8MA -to SEG[4]
+set_instance_assignment -name CURRENT_STRENGTH_NEW 8MA -to SEG[5]
+set_instance_assignment -name CURRENT_STRENGTH_NEW 8MA -to SEG[6]
+set_instance_assignment -name CURRENT_STRENGTH_NEW 8MA -to SEG[7]
+
+set_instance_assignment -name CURRENT_STRENGTH_NEW 8MA -to DIG[0]
+set_instance_assignment -name CURRENT_STRENGTH_NEW 8MA -to DIG[1]
+set_instance_assignment -name CURRENT_STRENGTH_NEW 8MA -to DIG[2]
+set_instance_assignment -name CURRENT_STRENGTH_NEW 8MA -to DIG[3]
+
+# ---- Unused Pin Handling ----
+set_global_assignment -name RESERVE_ALL_UNUSED_PINS_WEAK_PULLUP "AS INPUT TRI-STATED"
+
+set_global_assignment -name EDA_SIMULATION_TOOL "Questa Altera FPGA (SystemVerilog)"
+set_instance_assignment -name PARTITION_HIERARCHY root_partition -to | -section_id Top
+set_global_assignment -name PARTITION_NETLIST_TYPE SOURCE -section_id Top
+set_global_assignment -name PARTITION_FITTER_PRESERVATION_LEVEL PLACEMENT_AND_ROUTING -section_id Top
+set_global_assignment -name PARTITION_COLOR 16764057 -section_id Top
