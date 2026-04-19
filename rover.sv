@@ -18,7 +18,8 @@ module rover (
     parameter integer TOF_SENSOR_KIND            = 2;       // 2 = VL53L1X
     parameter integer PWRUP_DELAY_MS             = 100;
     parameter integer INTER_OP_DELAY_MS          = 5;
-    parameter integer MOTOR_SPEED_CMD            = 8'd50;
+    parameter integer MOTOR_SPEED_CMD            = 8'd110;   // motor speed
+	 parameter integer DIST_STOP_MM               = 200;     // stop dist
     parameter integer SENSOR_REINIT_AFTER_ERRORS = 4;
     parameter integer MOTOR_WAIT_TIMEOUT_MS      = 40;
     parameter integer TOF_INIT_TIMEOUT_MS        = 300;
@@ -90,7 +91,7 @@ module rover (
     // Вынесенная логика движения. clk и rst_n заведены внутрь,
     // но сам алгоритм движения оставлен таким же, как в последней рабочей версии.
     distance_motion_ctrl #(
-        .DIST_STOP_MM(200),
+        .DIST_STOP_MM(DIST_STOP_MM),
         .MOTOR_SPEED_CMD(MOTOR_SPEED_CMD)
     ) u_distance_motion_ctrl (
         .clk(CLK_50M),
